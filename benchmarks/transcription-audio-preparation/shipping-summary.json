@@ -1,0 +1,38 @@
+{
+  "one-hour-1": {
+    "baseline": {
+      "median_seconds": 3.713688819,
+      "min_seconds": 3.4453373,
+      "max_seconds": 4.036138629
+    },
+    "core-batch": {
+      "median_seconds": 3.479090015,
+      "min_seconds": 3.245090691,
+      "max_seconds": 3.723321309
+    }
+  },
+  "one-hour-2": {
+    "baseline": {
+      "median_seconds": 5.951555924,
+      "min_seconds": 5.7259116599999995,
+      "max_seconds": 6.794274896
+    },
+    "core-batch": {
+      "median_seconds": 5.742536541,
+      "min_seconds": 5.561809954,
+      "max_seconds": 5.952500605
+    }
+  },
+  "short-source": {
+    "baseline": {
+      "median_seconds": 0.013550312,
+      "min_seconds": 0.012689662,
+      "max_seconds": 0.015043676
+    },
+    "core-batch": {
+      "median_seconds": 0.012789688,
+      "min_seconds": 0.012515553,
+      "max_seconds": 0.013892958
+    }
+  }
+}
