@@ -1,0 +1,131 @@
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> /home/agent/cap-overnight/image-reference-worktree/vendor/wgpu-hal/src/gles/egl.rs:432:40
+    |
+432 |     pub unsafe fn get_without_egl_lock(&self) -> MappedMutexGuard<glow::Context> {
+    |                                        ^^^^^     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+    |                                        |
+    |                                        the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+    = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+    |
+432 |     pub unsafe fn get_without_egl_lock(&self) -> MappedMutexGuard<'_, glow::Context> {
+    |                                                                   +++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> /home/agent/cap-overnight/image-reference-worktree/vendor/wgpu-hal/src/vulkan/device.rs:282:9
+    |
+282 |         &self,
+    |         ^^^^^ the lifetime is elided here
+...
+285 |     ) -> Option<impl 'a + Iterator<Item = vk::MappedMemoryRange>> {
+    |                                           ^^^^^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+285 |     ) -> Option<impl 'a + Iterator<Item = vk::MappedMemoryRange<'_>>> {
+    |                                                                ++++
+
+warning: `wgpu-hal` (lib) generated 2 warnings (run `cargo fix --lib -p wgpu-hal` to apply 2 suggestions)
+    Checking gpui_util v0.1.0 (/home/agent/cap-overnight/zed-cap/crates/gpui_util)
+    Checking collections v0.1.0 (/home/agent/cap-overnight/zed-cap/crates/collections)
+   Compiling ztracing v0.1.0 (/home/agent/cap-overnight/zed-cap/crates/ztracing)
+    Checking zlog v0.1.0 (/home/agent/cap-overnight/zed-cap/crates/zlog)
+   Compiling ztracing_macro v0.1.0 (/home/agent/cap-overnight/zed-cap/crates/ztracing_macro)
+   Compiling perf v0.1.0 (/home/agent/cap-overnight/zed-cap/tooling/perf)
+   Compiling gpui v0.2.2 (/home/agent/cap-overnight/zed-cap/crates/gpui)
+   Compiling derive_refineable v0.1.0 (/home/agent/cap-overnight/zed-cap/crates/refineable/derive_refineable)
+    Checking scheduler v0.1.0 (/home/agent/cap-overnight/zed-cap/crates/scheduler)
+   Compiling util_macros v0.1.0 (/home/agent/cap-overnight/zed-cap/crates/util_macros)
+    Checking http_client v0.1.0 (/home/agent/cap-overnight/zed-cap/crates/http_client)
+    Checking gpui_shared_string v0.1.0 (/home/agent/cap-overnight/zed-cap/crates/gpui_shared_string)
+    Checking sum_tree v0.1.0 (/home/agent/cap-overnight/zed-cap/crates/sum_tree)
+   Compiling gpui_macros v0.1.0 (/home/agent/cap-overnight/zed-cap/crates/gpui_macros)
+    Checking refineable v0.1.0 (/home/agent/cap-overnight/zed-cap/crates/refineable)
+    Checking cap-audio v0.1.0 (/home/agent/cap-overnight/image-reference-worktree/crates/audio)
+    Checking cap-rendering v0.1.0 (/home/agent/cap-overnight/image-reference-worktree/crates/rendering)
+    Checking cap-editor v0.1.0 (/home/agent/cap-overnight/image-reference-worktree/crates/editor)
+    Checking cap-recording v0.1.0 (/home/agent/cap-overnight/image-reference-worktree/crates/recording)
+warning: use of deprecated module `std::usize`: all constants in this module replaced by associated constants on the type
+  --> /home/agent/cap-overnight/zed-cap/crates/gpui/src/elements/uniform_list.rs:14:51
+   |
+14 | use std::{cell::RefCell, cmp, ops::Range, rc::Rc, usize};
+   |                                                   ^^^^^
+   |
+   = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated constant `std::usize::MAX`: replaced by the `MAX` associated constant on this type
+   --> /home/agent/cap-overnight/zed-cap/crates/gpui/src/elements/uniform_list.rs:253:36
+    |
+253 |         self.scroll_to_item(usize::MAX, ScrollStrategy::Bottom);
+    |                                    ^^^
+
+    Checking cap-export v0.1.0 (/home/agent/cap-overnight/image-reference-worktree/crates/export)
+   Compiling cap-desktop-gpui v0.6.1 (/home/agent/cap-overnight/image-reference-worktree/apps/desktop-gpui)
+    Checking cap-gpui-kernels v0.1.0 (/home/agent/cap-overnight/image-reference-worktree/apps/desktop-gpui/kernels)
+warning: `gpui` (lib) generated 2 warnings
+    Checking gpui_wgpu v0.1.0 (/home/agent/cap-overnight/zed-cap/crates/gpui_wgpu)
+    Checking gpui_tokio v0.1.0 (/home/agent/cap-overnight/zed-cap/crates/gpui_tokio)
+    Checking gpui_linux v0.1.0 (/home/agent/cap-overnight/zed-cap/crates/gpui_linux)
+    Checking gpui_platform v0.1.0 (/home/agent/cap-overnight/zed-cap/crates/gpui_platform)
+warning: unused import: `image::RgbaImage`
+  --> src/target_thumbnails.rs:51:5
+   |
+51 | use image::RgbaImage;
+   |     ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `MAX_CAPTION_WORD_DURATION`
+    --> src/transcription.rs:1844:5
+     |
+1844 |     MAX_CAPTION_WORD_DURATION, caption_text_from_words, caption_word_chunks,
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `camera` is never used
+    --> /home/agent/cap-overnight/gpui-check-target/debug/build/cap-desktop-gpui-7c8d21a6419113e2/out/i18n.rs:4695:20
+     |
+4695 |             pub fn camera() -> &'static str {
+     |                    ^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `microphone` is never used
+    --> /home/agent/cap-overnight/gpui-check-target/debug/build/cap-desktop-gpui-7c8d21a6419113e2/out/i18n.rs:4710:20
+     |
+4710 |             pub fn microphone() -> &'static str {
+     |                    ^^^^^^^^^^
+
+warning: function `tooltip_recording` is never used
+    --> /home/agent/cap-overnight/gpui-check-target/debug/build/cap-desktop-gpui-7c8d21a6419113e2/out/i18n.rs:6839:16
+     |
+6839 |         pub fn tooltip_recording() -> &'static str {
+     |                ^^^^^^^^^^^^^^^^^
+
+warning: method `title` is never used
+   --> src/main_window.rs:645:8
+    |
+629 | impl DeviceMenu {
+    | --------------- method in this implementation
+...
+645 |     fn title(self) -> &'static str {
+    |        ^^^^^
+
+warning: function `open_image_panel` is never used
+    --> src/platform.rs:2934:12
+     |
+2934 |     pub fn open_image_panel(_extensions: &[&str]) -> Option<std::path::PathBuf> {
+     |            ^^^^^^^^^^^^^^^^
+
+warning: function `read_linux_reopen_actions` is never used
+   --> src/single_instance.rs:634:4
+    |
+634 | fn read_linux_reopen_actions(
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `cap-desktop-gpui` (bin "cap-gpui") generated 8 warnings (run `cargo fix --bin "cap-gpui" -p cap-desktop-gpui` to apply 2 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 49.77s
+warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`

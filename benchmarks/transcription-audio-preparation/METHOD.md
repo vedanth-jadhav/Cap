@@ -31,6 +31,6 @@ rustc +stable --edition 2024 --test -C opt-level=0 profile-parity-tests.rs --ext
 /tmp/normalization-parity
 ```
 
-The full GPUI `cargo check --locked -p cap-desktop-gpui --bin cap-gpui` was attempted after installing native prerequisites. Both unmodified upstream fb453e3e3 and the candidate fail with E0599 at src/single_instance.rs:992 (`activate_window_with_token` missing from the documented pinned wingleeio/zed 5d1f83d). Both also report the same existing unused-import warnings. This benchmark does not claim a successful full UI build or full GPUI test suite. The newly added writer test was executed with source-identical writer functions in a native cap-audio example; normalization tests and cross-optimization parity were executed independently.
+The full GPUI `cargo check --locked -p cap-desktop-gpui --bin cap-gpui` passes after applying the current official `scripts/prepare-gpui-dependency.sh` patch stack. An initial E0599 was due to older local patches, not an upstream source defect. The full UI test suite and ASR inference were not run; the exact production writer and test were executed in the native cap-audio example. See gpui-check.txt for the completed compile result.
 
 Related open work checked before publication: #2747 changes which timeline ranges reach transcription (and retains these normalization/WAV helpers), #2814 sizes Whisper inference threads, and #3344 stages model downloads. This change preserves timeline selection and inference scheduling and does not duplicate those fixes.
