@@ -630,10 +630,20 @@ impl AgentClient {
                 "Cap server URL must use HTTP or HTTPS",
             ));
         }
-        let http = reqwest::Client::builder()
-            .connect_timeout(Duration::from_secs(10))
-            .read_timeout(Duration::from_secs(60))
-            .user_agent(concat!("cap-cli/", env!("CARGO_PKG_VERSION")))
+        let http = Self::http_builder()
+            .redirect(reqwest::redirect::Policy::custom(|attempt| {
+                if attempt.previous().len() > 10 {
+                    attempt.error("too many redirects")
+                } else if attempt
+                    .previous()
+                    .first()
+                    .is_none_or(|previous| previous.origin() != attempt.url().origin())
+                {
+                    attempt.stop()
+                } else {
+                    attempt.follow()
+                }
+            }))
             .build()
             .map_err(|error| AgentApiError::local("TEMPORARY_UNAVAILABLE", error.to_string()))?;
         Ok(Self {
@@ -644,6 +654,19 @@ impl AgentClient {
             access_grant_checks: Arc::new(RwLock::new(HashMap::new())),
             reload_access_grants: false,
         })
+    }
+
+    fn http_builder() -> reqwest::ClientBuilder {
+        reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .read_timeout(Duration::from_secs(60))
+            .user_agent(concat!("cap-cli/", env!("CARGO_PKG_VERSION")))
+    }
+
+    fn download_client() -> Result<reqwest::Client, AgentApiError> {
+        Self::http_builder()
+            .build()
+            .map_err(|error| AgentApiError::local("TEMPORARY_UNAVAILABLE", error.to_string()))
     }
 
     fn endpoint(&self, path: &str) -> String {
@@ -722,6 +745,15 @@ impl AgentClient {
                 return Ok(response);
             }
             let status = response.status();
+            if status.is_redirection() && response.headers().contains_key(reqwest::header::LOCATION)
+            {
+                return Err(AgentApiError::local(
+                    "TEMPORARY_UNAVAILABLE",
+                    format!(
+                        "Cap API returned HTTP {status}; configure a server URL that serves the API without a cross-origin redirect"
+                    ),
+                ));
+            }
             let error = Self::parse_error(response).await;
             let retryable = error.retryable
                 || status == StatusCode::TOO_MANY_REQUESTS
@@ -1394,9 +1426,13 @@ impl CapsArgs {
                         "Cap returned an invalid download",
                     )
                 })?;
-                let response = client.http.get(url).send().await.map_err(|error| {
-                    AgentApiError::local("TEMPORARY_UNAVAILABLE", error.to_string())
-                })?;
+                let response = AgentClient::download_client()?
+                    .get(url)
+                    .send()
+                    .await
+                    .map_err(|error| {
+                        AgentApiError::local("TEMPORARY_UNAVAILABLE", error.to_string())
+                    })?;
                 if !response.status().is_success() {
                     return Err(AgentApiError::local(
                         "TEMPORARY_UNAVAILABLE",
@@ -2108,6 +2144,186 @@ mod tests {
         let keys = server.await.unwrap();
         assert_eq!(keys.len(), 2);
         assert_eq!(keys[0], keys[1]);
+    }
+
+    async fn redirected_api_request_reaches_other_origin(unlock: bool) -> Option<String> {
+        let target = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let target_addr = target.local_addr().unwrap();
+        let origin = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin_addr = origin.local_addr().unwrap();
+        let target_task = tokio::spawn(async move {
+            let Ok(Ok((mut stream, _))) =
+                tokio::time::timeout(Duration::from_secs(2), target.accept()).await
+            else {
+                return None;
+            };
+            let request = read_request(&mut stream).await;
+            mock_response(&mut stream, "200 OK", r#"{"ok":true}"#).await;
+            Some(request)
+        });
+        let origin_task = tokio::spawn(async move {
+            let (mut stream, _) = origin.accept().await.unwrap();
+            let _ = read_request(&mut stream).await;
+            stream.write_all(format!("HTTP/1.1 307 Temporary Redirect\r\nLocation: http://{target_addr}/redirected\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").as_bytes()).await.unwrap();
+        });
+        let client = AgentClient::new(
+            format!("http://{origin_addr}"),
+            "synthetic_token".to_string(),
+        )
+        .unwrap();
+        client.access_grants.write().unwrap().insert(
+            "cap_test".to_string(),
+            credentials::AgentAccessGrant {
+                value: "synthetic_grant".to_string(),
+                expires_at: chrono::Utc::now() + chrono::Duration::minutes(1),
+            },
+        );
+        let result = if unlock {
+            client.unlock_json("cap_test", "synthetic_password").await
+        } else {
+            client.get_json("/caps/cap_test/context").await
+        };
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(
+            error.message.contains("cross-origin redirect"),
+            "{}",
+            error.message
+        );
+        origin_task.await.unwrap();
+        target_task.await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn api_redirect_cross_origin_does_not_forward_access_grant() {
+        let request = redirected_api_request_reaches_other_origin(false).await;
+        assert!(
+            request.is_none(),
+            "cross-origin request received grant: {}",
+            request
+                .as_deref()
+                .is_some_and(|r| r.contains("synthetic_grant"))
+        );
+    }
+
+    #[tokio::test]
+    async fn api_redirect_cross_origin_does_not_forward_unlock_password() {
+        let request = redirected_api_request_reaches_other_origin(true).await;
+        assert!(
+            request.is_none(),
+            "cross-origin request received password: {}",
+            request
+                .as_deref()
+                .is_some_and(|r| r.contains("synthetic_password"))
+        );
+    }
+
+    #[tokio::test]
+    async fn api_redirect_same_origin_keeps_access_grant() {
+        for unlock in [false, true] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move {
+                let (mut first, _) = listener.accept().await.unwrap();
+                let _ = read_request(&mut first).await;
+                first.write_all(b"HTTP/1.1 307 Temporary Redirect\r\nLocation: /same-origin\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await.unwrap();
+                let (mut second, _) = listener.accept().await.unwrap();
+                let request = read_request(&mut second).await;
+                mock_response(&mut second, "200 OK", r#"{"ok":true}"#).await;
+                request
+            });
+            let client =
+                AgentClient::new(format!("http://{address}"), "synthetic_token".into()).unwrap();
+            client.access_grants.write().unwrap().insert(
+                "cap_test".to_string(),
+                credentials::AgentAccessGrant {
+                    value: "synthetic_grant".to_string(),
+                    expires_at: chrono::Utc::now() + chrono::Duration::minutes(1),
+                },
+            );
+            let value = tokio::time::timeout(Duration::from_secs(5), async {
+                if unlock {
+                    client.unlock_json("cap_test", "synthetic_password").await
+                } else {
+                    client.get_json("/caps/cap_test/context").await
+                }
+            })
+            .await
+            .unwrap()
+            .unwrap();
+            assert_eq!(value["ok"], true);
+            let request = server.await.unwrap();
+            assert!(request.contains("x-cap-access-grant: synthetic_grant"));
+            assert!(request.contains("authorization: Bearer synthetic_token"));
+            assert_eq!(request.contains("synthetic_password"), unlock);
+        }
+    }
+
+    #[tokio::test]
+    async fn api_redirect_preserves_ten_redirect_limit() {
+        for redirects in [10, 11] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move {
+                for index in 0..=10 {
+                    let (mut stream, _) =
+                        tokio::time::timeout(Duration::from_secs(5), listener.accept())
+                            .await
+                            .unwrap()
+                            .unwrap();
+                    let _ = read_request(&mut stream).await;
+                    if index < redirects {
+                        stream.write_all(b"HTTP/1.1 302 Found\r\nLocation: /next\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await.unwrap();
+                    } else {
+                        mock_response(&mut stream, "200 OK", r#"{"ok":true}"#).await;
+                    }
+                }
+            });
+            let client =
+                AgentClient::new(format!("http://{address}"), "synthetic_token".into()).unwrap();
+            let response = tokio::time::timeout(
+                Duration::from_secs(5),
+                client.http.get(format!("http://{address}/start")).send(),
+            )
+            .await
+            .unwrap();
+            assert_eq!(response.is_ok(), redirects == 10);
+            server.await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn api_redirect_signed_download_can_cross_origins() {
+        let target = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let target_addr = target.local_addr().unwrap();
+        let origin = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin_addr = origin.local_addr().unwrap();
+        let target_task = tokio::spawn(async move {
+            let (mut stream, _) = target.accept().await.unwrap();
+            let request = read_request(&mut stream).await;
+            mock_response(&mut stream, "200 OK", "download").await;
+            request
+        });
+        let origin_task = tokio::spawn(async move {
+            let (mut stream, _) = origin.accept().await.unwrap();
+            let _ = read_request(&mut stream).await;
+            stream.write_all(format!("HTTP/1.1 307 Temporary Redirect\r\nLocation: http://{target_addr}/file\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").as_bytes()).await.unwrap();
+        });
+        let response = tokio::time::timeout(
+            Duration::from_secs(5),
+            AgentClient::download_client()
+                .unwrap()
+                .get(format!("http://{origin_addr}/file"))
+                .send(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(response.text().await.unwrap(), "download");
+        origin_task.await.unwrap();
+        let request = target_task.await.unwrap().to_ascii_lowercase();
+        assert!(!request.contains("authorization:"));
+        assert!(!request.contains("x-cap-access-grant:"));
     }
 
     #[tokio::test]
